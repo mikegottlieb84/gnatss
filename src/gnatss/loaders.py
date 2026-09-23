@@ -431,7 +431,7 @@ def load_sv3_targz(
     and events for each reply. These events should contain the timing and
     position data at ping transmit and reply, but the specific structure
     has been modified over time. This function also aims to accommodate these
-    variations. Attitude comes from parsed.attitude_source (AHRS by default).
+    variations. Attitude comes from parsed.attitude_source (NOV_INS by default).
     Pings missing finite roll, pitch, or heading at transmit or any nonzero-range
     reply are skipped in full, and the skipped count is reported.
 

@@ -65,7 +65,7 @@ def archive(tmp_path, records):
 
 
 def test_default_and_invalid_source():
-    assert Parsed(atd_offsets=config().parsed.atd_offsets).attitude_source == "AHRS"
+    assert Parsed(atd_offsets=config().parsed.atd_offsets).attitude_source == "NOV_INS"
     with pytest.raises(ValidationError):
         config("unknown")
 

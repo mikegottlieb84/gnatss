@@ -37,12 +37,12 @@ rate, we colloquially refer to it as a "parsed" data set and the solution as a
 ## Processing Adjustments
 
 For JSON PIN files inside QC `.tar.gz` archives, roll, pitch, and heading
-default to `observations.AHRS.r`, `.p`, and `.h` at interrogation and reply.
+default to `observations.NOV_INS.r`, `.p`, and `.h` at interrogation and reply.
 Select the source in the configuration:
 
 ```yaml
 parsed:
-  attitude_source: AHRS  # Default; use NOV_INS for the previous behavior.
+  attitude_source: NOV_INS  # Default; use AHRS to select XSENS attitude.
   # Other parsed settings, including atd_offsets and input_files, go here.
 ```
 

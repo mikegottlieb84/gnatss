@@ -40,7 +40,7 @@ class Parsed(BaseModel):
     """
 
     attitude_source: Literal["AHRS", "NOV_INS"] = Field(
-        "AHRS", description="Source of roll, pitch, and heading in JSON PIN observations."
+        "NOV_INS", description="Source of roll, pitch, and heading in JSON PIN observations."
     )
     export: ExportObs | None = Field(None, description="Export observation data after filtering.")
     input_files: ParsedInputs | None = Field(
