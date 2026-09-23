@@ -4,6 +4,7 @@ import typer
 
 from .. import constants
 from ..ops.data import ensure_monotonic_increasing, preprocess_data, standardize_data
+from .ahrs import interpolate_ahrs
 from .posfilter import kalman_filtering, rotation, spline_interpolate
 from .utilities import export_gps_solution, filter_columns
 
@@ -20,6 +21,13 @@ def run_posfilter(config, data_dict):
     }:
         config, data_dict = preprocess_data(config, data_dict)
 
+    if config.posfilter.attitude_source == "AHRS":
+        typer.echo("Interpolating high-rate AHRS attitude ...")
+        travel_times, cov_rph_twtt = interpolate_ahrs(
+            data_dict["ahrs"], data_dict["travel_times"], config.posfilter.ahrs
+        )
+        data_dict["travel_times"] = travel_times
+
     typer.echo("Performing Kalman filtering ...")
     # These are antenna positions and covariances
     pos_twtt = kalman_filtering(
@@ -28,12 +36,13 @@ def run_posfilter(config, data_dict):
         gps_df=data_dict.get("gps_positions"),
         twtt_df=data_dict.get("travel_times"),
     )
-    typer.echo("Performing Spline Interpolation ...")
-    cov_rph_twtt = spline_interpolate(
-        inspvaa_df=data_dict.get("novatel"),
-        insstdeva_df=data_dict.get("novatel_std"),
-        twtt_df=data_dict.get("travel_times"),
-    )
+    if config.posfilter.attitude_source == "NOV_INS":
+        typer.echo("Performing Spline Interpolation ...")
+        cov_rph_twtt = spline_interpolate(
+            inspvaa_df=data_dict.get("novatel"),
+            insstdeva_df=data_dict.get("novatel_std"),
+            twtt_df=data_dict.get("travel_times"),
+        )
     typer.echo("Performing Rotation ...")
     pos_freed_trans_twtt = rotation(
         pos_twtt, cov_rph_twtt, config.posfilter.atd_offsets, config.array_center

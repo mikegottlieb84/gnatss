@@ -6,7 +6,9 @@ position filtering configuration
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 from .io import InputData
 
@@ -20,6 +22,9 @@ class AtdOffset(BaseModel):
 
 
 class PositionFilterInputs(BaseModel):
+    ahrs: InputData | None = Field(
+        None, description="Externally extracted XSENS attitude CSV files."
+    )
     roll_pitch_heading: InputData | None = Field(
         None, description="Roll Pitch Heading (RPH) data path specification."
     )
@@ -42,6 +47,24 @@ class ExportObs(BaseModel):
     )
 
 
+class AhrsOptions(BaseModel):
+    """Explicit uncertainty assumptions and interpolation limits for AHRS attitude."""
+
+    roll_std: float = Field(
+        ..., gt=0, allow_inf_nan=False, description="Roll uncertainty, degrees."
+    )
+    pitch_std: float = Field(
+        ..., gt=0, allow_inf_nan=False, description="Pitch uncertainty, degrees."
+    )
+    heading_std: float = Field(
+        ..., gt=0, allow_inf_nan=False, description="Heading uncertainty, degrees."
+    )
+    max_gap_seconds: float = Field(0.5, gt=0, allow_inf_nan=False)
+    heading_offset_deg: float = Field(
+        0.0, allow_inf_nan=False, description="Correction added to exported heading, degrees."
+    )
+
+
 class PositionFilter(BaseModel):
     """
     Position filter base model for position filtering routine
@@ -52,3 +75,16 @@ class PositionFilter(BaseModel):
         None, description="Input files for position filtering routine."
     )
     atd_offsets: AtdOffset = Field(..., description="Antenna Transducer Offset values.")
+    attitude_source: Literal["NOV_INS", "AHRS"] = "NOV_INS"
+    ahrs: AhrsOptions | None = None
+
+    @model_validator(mode="after")
+    def validate_ahrs_input(self):
+        if self.attitude_source == "AHRS" and (
+            self.input_files is None or self.input_files.ahrs is None or self.ahrs is None
+        ):
+            msg = (
+                "AHRS requires posfilter.input_files.ahrs and posfilter.ahrs uncertainty settings."
+            )
+            raise ValueError(msg)
+        return self

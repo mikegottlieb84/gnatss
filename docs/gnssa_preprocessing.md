@@ -183,3 +183,73 @@ deployment.
 - Watanabe, S. I., Ishikawa, T., Yokota, Y., & Nakamura, Y. (2020). _GARPOS:
   Analysis software for the GNSS‐A seafloor positioning with simultaneous
   estimation of sound speed structure_. Frontiers in Earth Science, 8, 597532.
+## Optional high-rate AHRS attitude
+
+Full-rate position filtering defaults to NovAtel INSPVAA attitude. To use the
+continuous XSENS attitude series instead, first extract `AHRS00.bin` externally
+with the vendor's `XSENSDataExtractor.py`, then configure the CSV input:
+
+```yaml
+posfilter:
+  attitude_source: AHRS # Omit this setting, or use NOV_INS, for existing behavior.
+  ahrs:
+    # Illustrative assumptions, NOT measured or manufacturer-specified accuracy.
+    # Supply appropriate standard deviations in degrees for your deployment.
+    roll_std: 0.2
+    pitch_std: 0.2
+    heading_std: 2.0
+    max_gap_seconds: 0.5
+    heading_offset_deg: 0.0
+  input_files:
+    ahrs:
+      path: /path/to/decoded/**/DecodedXSens.csv
+      loader_kwargs:
+        time_column: Common Time
+    # Keep your existing novatel, novatel_std, gps_positions, and travel_times.
+  # Keep your existing atd_offsets and other posfilter settings.
+```
+
+The loader requires `Common Time` (or the explicitly selected time column),
+`Heading`, `Pitch`, and `Roll` headers. Other CSV columns are ignored. Leading
+spaces in column headers are accepted. Attitude is in degrees. Identical
+overlapping rows are deduplicated; conflicting observations at the same timestamp
+raise an error. Invalid attitude samples remain gaps rather than becoming zeros.
+
+**Check your extractor's timestamp labels.** Some vendor script versions and the
+manual's example CSV swap Common Time and Instrument Time. The selected column
+must contain GPS-A common epoch seconds since 1970, not seconds since startup.
+For a swapped export, explicitly set `time_column: Instrument Time`; the loader
+does not guess or silently swap columns. It rejects nonfinite timestamps and
+epochs before 2000. Conversion uses the same GPS-A common-time convention as the
+existing DFOP/PIN loaders. Do not supply milliseconds or J2000 seconds directly.
+
+The GPS-A Integration Manual IM-8297 Issue 2, section 4.1.8 (page 30) and D.1.3
+(pages 110-111), describes NED attitude with positive roll starboard-down and
+positive pitch bow-up. These agree with the existing GNATSS rotation convention.
+The common timestamp is the time the GPS-A CPU received the data, rather than a
+guaranteed sensor measurement epoch. No latency correction is applied.
+
+GNATSS uses the exported XSENS `Heading` (Euler yaw), not a heading recomputed
+from magnetic-field columns. The manual distinguishes those outputs in section
+5.8 (page 55), and notes that XSENS heading can wander during dynamic operation.
+The manual does not establish a deployment-specific true-north correction.
+`heading_offset_deg` is added to the exported heading; its default zero means
+no correction. Confirm the sensor configuration and heading reference before
+using the result for geodetic processing. No sign reversal or magnetic-declination
+model is applied automatically.
+
+AHRS attitude is interpolated at each acoustic transmit/reply epoch using cubic
+splines in elapsed time, after angular unwrapping. Interpolation does not cross
+invalid samples or time gaps larger than `max_gap_seconds` (default 0.5 seconds),
+and does not extrapolate. Segments with two or three samples use linear
+interpolation; an isolated sample supports only its exact epoch. Output heading
+is normalized to 0-360 degrees. Zero-degree attitude values are valid.
+
+If any event in a ping lacks supported attitude, the whole ping is removed and
+the skipped count is printed. If no pings remain, processing stops with an error.
+This applies to both DFOP and legacy travel-time inputs. There is no fallback to
+NOV_INS. The NovAtel velocity inputs and their uncertainties still supply the
+position filter. The explicit AHRS standard deviations populate a diagonal
+attitude covariance in degrees squared; they are assumptions, not sensor-reported
+uncertainties. The existing rotation does not propagate attitude covariance into
+the transducer position covariance.

@@ -287,6 +287,50 @@ def load_dfo(
     return _round_time_precision(raw_data_out, time_round)
 
 
+def load_ahrs_csv(files: list[str], time_column: str = "Common Time") -> pd.DataFrame:
+    """Load externally decoded XSENS CSV, in degrees and GPS-A common epoch seconds.
+
+    Some extractor versions swap the common/instrument column labels; callers
+    must explicitly select Instrument Time for those files. Invalid attitude rows
+    are retained as gaps, never replaced with zero or another sensor's values.
+    """
+    frames = []
+    columns = {
+        time_column: constants.RPH_TIME,
+        "Roll": "roll",
+        "Pitch": "pitch",
+        "Heading": "heading",
+    }
+    for file in files:
+        frame = pd.read_csv(file, skipinitialspace=True)
+        frame.columns = frame.columns.str.strip()
+        if not set(columns).issubset(frame.columns):
+            msg = f"AHRS CSV {file} requires columns {list(columns)}."
+            raise ValueError(msg)
+        frame = frame[list(columns)].rename(columns=columns).apply(pd.to_numeric, errors="coerce")
+        epoch = frame[constants.RPH_TIME].to_numpy()
+        # An uptime accidentally selected as an epoch must not silently lose all pings.
+        if not np.isfinite(epoch).all() or (epoch < 946684800).any():
+            msg = (
+                f"AHRS CSV {file}: {time_column} must contain epoch seconds since 1970 "
+                "(year 2000 or later). Check for swapped Common Time/Instrument Time columns."
+            )
+            raise ValueError(msg)
+        frame[constants.RPH_TIME] = AstroTime(epoch, format="unix", scale="tt").rangea_j2000
+        frame[constants.RPH_LOCAL_TANGENTS] = frame[constants.RPH_LOCAL_TANGENTS].replace(
+            [np.inf, -np.inf], np.nan
+        )
+        frames.append(frame)
+    if not frames:
+        msg = "No AHRS CSV files supplied."
+        raise ValueError(msg)
+    result = pd.concat(frames, ignore_index=True).drop_duplicates()
+    if result[constants.RPH_TIME].duplicated().any():
+        msg = "Conflicting AHRS observations at the same timestamp."
+        raise ValueError(msg)
+    return result.sort_values(constants.RPH_TIME).reset_index(drop=True)
+
+
 def load_roll_pitch_heading(
     files: list[str],
 ) -> pd.DataFrame:

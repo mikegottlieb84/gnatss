@@ -11,6 +11,7 @@ from .. import constants
 from ..configs.io import CSVOutput, InputData, OutputPath
 from ..configs.main import Configuration
 from ..loaders import (
+    load_ahrs_csv,
     load_configuration,
     load_csrs_positions,
     load_deletions,
@@ -285,6 +286,9 @@ def load_files_to_dataframe(key, input_data, config: Configuration, remove_outli
         "novatel": load_novatel,
         "novatel_std": load_novatel_std,
     }
+
+    if key == "ahrs":
+        return load_ahrs_csv(file_paths, **loader_kwargs)
 
     if key == "travel_times":
         # Acoustic TWTT input for posfilter
