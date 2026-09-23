@@ -365,6 +365,18 @@ def _round_time_precision(gps_data, time_round):
     return gps_data
 
 
+def _has_complete_attitude(observations: dict, source: str) -> bool:
+    attitude = observations.get(source)
+    if not isinstance(attitude, dict):
+        return False
+    return all(
+        isinstance(attitude.get(key), (int, float))
+        and not isinstance(attitude[key], bool)
+        and np.isfinite(attitude[key])
+        for key in ("r", "p", "h")
+    )
+
+
 def load_sv3_targz(
     config: Configuration, file_paths: list[str], time_round: int = constants.DELAY_TIME_PRECISION
 ):
@@ -375,7 +387,9 @@ def load_sv3_targz(
     and events for each reply. These events should contain the timing and
     position data at ping transmit and reply, but the specific structure
     has been modified over time. This function also aims to accommodate these
-    variations.
+    variations. Attitude comes from parsed.attitude_source (AHRS by default).
+    Pings missing finite roll, pitch, or heading at transmit or any nonzero-range
+    reply are skipped in full, and the skipped count is reported.
 
     Parameters
     ----------
@@ -405,6 +419,8 @@ def load_sv3_targz(
     # Get Site ID from config
     SITE = config.site_id
 
+    attitude_source = config.parsed.attitude_source
+    skipped_attitude_pings = 0
     temp_list = []
 
     # Open a temporary directory to store the unzipped .pin files
@@ -428,6 +444,20 @@ def load_sv3_targz(
                             continue
 
                         if pin_json["interrogation"]["observations"]["GNSS"] == "ERR3":
+                            continue
+
+                        # Validate before emitting any rows so a partial ping cannot remain.
+                        events = {
+                            key: value
+                            for key, value in pin_json.items()
+                            if value["event"] == "interrogation"
+                            or (value["event"] == "range" and value["range"]["range"] != 0.0)
+                        }
+                        if any(
+                            not _has_complete_attitude(value["observations"], attitude_source)
+                            for value in events.values()
+                        ):
+                            skipped_attitude_pings += 1
                             continue
 
                         # Read transmit values
@@ -465,17 +495,18 @@ def load_sv3_targz(
                         )
 
                         # Gather reply values and write to list
-                        for pin_event in pin_json:
+                        for pin_event in events:
                             if pin_json["interrogation"]["observations"]["GNSS"] == "ERR3":
                                 continue
 
                             # Log event designation
                             event = pin_json[pin_event]["event"]
 
-                            # Record RPH values
-                            roll1 = pin_json[pin_event]["observations"]["NOV_INS"]["r"]
-                            pitch1 = pin_json[pin_event]["observations"]["NOV_INS"]["p"]
-                            heading1 = pin_json[pin_event]["observations"]["NOV_INS"]["h"]
+                            # Record all three attitude values from the selected source.
+                            attitude = pin_json[pin_event]["observations"][attitude_source]
+                            roll1 = attitude["r"]
+                            pitch1 = attitude["p"]
+                            heading1 = attitude["h"]
 
                             # Truncated data export for ping transmit
                             if event == "interrogation":
@@ -566,6 +597,14 @@ def load_sv3_targz(
                                         ant_Z0,
                                     ]
                                 )
+
+    typer.echo(
+        f"Skipped {skipped_attitude_pings} QC pings with missing or invalid "
+        f"{attitude_source} roll/pitch/heading."
+    )
+    if skipped_attitude_pings and not temp_list:
+        msg = f"No QC pings remain with complete {attitude_source} roll/pitch/heading."
+        raise ValueError(msg)
 
     # Define columns out and convert list to DataFrame
     columns = [

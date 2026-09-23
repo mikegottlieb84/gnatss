@@ -36,6 +36,23 @@ rate, we colloquially refer to it as a "parsed" data set and the solution as a
 
 ## Processing Adjustments
 
+For JSON PIN files inside QC `.tar.gz` archives, roll, pitch, and heading
+default to `observations.AHRS.r`, `.p`, and `.h` at interrogation and reply.
+Select the source in the configuration:
+
+```yaml
+parsed:
+  attitude_source: AHRS  # Default; use NOV_INS for the previous behavior.
+  # Other parsed settings, including atd_offsets and input_files, go here.
+```
+
+If any selected attitude value is missing, nonnumeric, or nonfinite at
+interrogation or a nonzero-range reply, the entire ping is skipped. The loader
+reports the number of skipped pings and raises an error if none remain.
+Zero-degree attitude values are valid. There is no automatic fallback to another
+sensor or to `h_mag`. Position and velocity sourcing is unchanged, as are the
+standard posfilter and DFOP00 processing paths.
+
 The standard posfilter processing will fail outright when attempted on a parsed
 data set due to the reduced sampling rate of the INS - the Kalman filter and
 spline interpolation require the full-rate data. The Wave Glider telemeters a

@@ -8,6 +8,8 @@ during data collection.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .io import InputData
@@ -37,6 +39,9 @@ class Parsed(BaseModel):
     Parsed base model for 2-minute parsed position filtering routine
     """
 
+    attitude_source: Literal["AHRS", "NOV_INS"] = Field(
+        "AHRS", description="Source of roll, pitch, and heading in JSON PIN observations."
+    )
     export: ExportObs | None = Field(None, description="Export observation data after filtering.")
     input_files: ParsedInputs | None = Field(
         None, description="Input files for 2-minute parsed position filtering routine."
